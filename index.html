@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chess-like Game</title>
+    <style>
+        #game-board {
+            display: grid;
+            grid-template-columns: repeat(5, 60px);
+            grid-gap: 2px;
+        }
+        .cell {
+            width: 60px;
+            height: 60px;
+            border: 1px solid black;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+        .selected {
+            background-color: yellow;
+        }
+        #moves {
+            margin-top: 20px;
+        }
+        .move-btn {
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-board"></div>
+    <div id="moves"></div>
+    <div id="status"></div>
+
+    <script>
+        let socket;
+        let gameState = null;
+        let selectedCharacter = null;
+
+        // Initialize WebSocket connection
+        function initWebSocket() {
+            socket = new WebSocket('ws://localhost:8765');
+
+            socket.onopen = function() {
+                console.log("Connected to WebSocket server");
+            };
+
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.type === 'state_update') {
+                    gameState = data.state;
+                    updateBoard();
+                } else if (data.type === 'invalid_move') {
+                    alert('Invalid move!');
+                } else if (data.type === 'game_over') {
+                    alert(`Game Over! Winner: Player ${data.winner}`);
+                }
+            };
+
+            socket.onerror = function(error) {
+                console.error("WebSocket Error:", error);
+            };
+
+            socket.onclose = function() {
+                console.log("Disconnected from WebSocket server");
+            };
+        }
+
+        // Update the game board based on the gameState
+        function updateBoard() {
+            const board = document.getElementById('game-board');
+            board.innerHTML = '';
+            for (let i = 0; i < 5; i++) {
+                for (let j = 0; j < 5; j++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    if (gameState.board[i][j]) {
+                        cell.textContent = gameState.board[i][j];
+                        cell.onclick = () => selectCharacter(gameState.board[i][j]);
+                    }
+                    board.appendChild(cell);
+                }
+            }
+            document.getElementById('status').textContent = `Current Player: ${gameState.current_player}`;
+        }
+
+        // Handle character selection
+        function selectCharacter(character) {
+            if (character.startsWith(gameState.current_player)) {
+                selectedCharacter = character.split('-')[1];
+                updateMoveButtons();
+                highlightSelectedCharacter();
+            }
+        }
+
+        // Highlight the selected character on the board
+        function highlightSelectedCharacter() {
+            const cells = document.getElementsByClassName('cell');
+            for (let cell of cells) {
+                cell.classList.remove('selected');
+                if (cell.textContent === `${gameState.current_player}-${selectedCharacter}`) {
+                    cell.classList.add('selected');
+                }
+            }
+        }
+
+        // Update the move buttons based on the selected character
+        function updateMoveButtons() {
+            const movesDiv = document.getElementById('moves');
+            movesDiv.innerHTML = '';
+            if (selectedCharacter) {
+                const moves = selectedCharacter[0] === 'P' ? ['L', 'R', 'F', 'B'] :
+                              selectedCharacter === 'H1' ? ['L', 'R', 'F', 'B'] :
+                              ['FL', 'FR', 'BL', 'BR'];
+                moves.forEach(move => {
+                    const btn = document.createElement('button');
+                    btn.textContent = move;
+                    btn.className = 'move-btn';
+                    btn.onclick = () => sendMove(selectedCharacter, move);
+                    movesDiv.appendChild(btn);
+                });
+            }
+        }
+
+        // Send the selected move to the server
+        function sendMove(character, move) {
+            socket.send(JSON.stringify({type: 'move', character: character, move: move}));
+        }
+
+        // Initialize an empty game board
+        function initEmptyBoard() {
+            const board = document.getElementById('game-board');
+            for (let i = 0; i < 25; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                board.appendChild(cell);
+            }
+            document.getElementById('status').textContent = 'Waiting for game to start...';
+        }
+
+        // Call this function when the page loads
+        window.onload = function() {
+            initWebSocket();
+            initEmptyBoard();
+        };
+    </script>
+</body>
+</html>
